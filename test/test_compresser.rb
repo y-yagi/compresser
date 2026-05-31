@@ -2,6 +2,8 @@
 
 require "test_helper"
 
+FakeSpec = Struct.new(:name, :full_require_paths)
+
 class TestCompresser < Minitest::Test
   def test_that_it_has_a_version_number
     refute_nil ::Compresser::VERSION
@@ -28,5 +30,66 @@ class TestCompresser < Minitest::Test
     assert_raises(Gem::MissingSpecError) do
       Compresser::Packer.new("nonexistent_gem_xyz_123").pack
     end
+  end
+end
+
+class TestPackerWithFixtures < Minitest::Test
+  FIXTURES_DIR = File.join(__dir__, "fixtures")
+
+  def fixture_spec(name)
+    FakeSpec.new(name, [File.join(FIXTURES_DIR, name, "lib")])
+  end
+
+  def packer(gem_name, *dep_names)
+    specs = [gem_name, *dep_names].map { |n| fixture_spec(n) }
+    Compresser::Packer.new(gem_name, specs: specs)
+  end
+
+  def test_pack_inlines_external_gem
+    result = packer("gem_a", "gem_b").pack
+    assert_includes result, "module GemA"
+    assert_includes result, "module GemB"
+  end
+
+  def test_pack_preserves_stdlib_requires
+    result = packer("gem_b").pack
+    assert_match(/^require "set"/, result)
+  end
+
+  def test_pack_strips_inlined_gem_requires
+    result = packer("gem_a", "gem_b").pack
+    refute_match(/^require "gem_b"/, result)
+    refute_match(/^require "gem_a\//, result)
+  end
+
+  def test_pack_shared_dependency_included_once
+    # gem_a/core.rb also requires gem_a/shared, so shared would be required twice
+    result = packer("gem_a", "gem_b").pack
+    assert_equal 1, result.scan("module GemA\n  module Shared").length
+  end
+
+  def test_pack_dependency_appears_before_dependent
+    result = packer("gem_a", "gem_b").pack
+    gem_b_pos = result.index("module GemB")
+    gem_a_pos = result.rindex("module GemA")
+    assert gem_b_pos < gem_a_pos, "GemB must appear before GemA"
+  end
+
+  def test_pack_frozen_string_literal_appears_once
+    result = packer("gem_a", "gem_b").pack
+    assert_equal 1, result.scan("# frozen_string_literal: true").length
+  end
+
+  def test_pack_handles_circular_dependency
+    result = packer("gem_circular").pack
+    assert_includes result, "module GemCircular"
+    assert_includes result, "module A"
+    assert_includes result, "module B"
+  end
+
+  def test_pack_circular_dependency_each_file_once
+    result = packer("gem_circular").pack
+    assert_equal 1, result.scan("module GemCircular\n  module A").length
+    assert_equal 1, result.scan("module GemCircular\n  module B").length
   end
 end

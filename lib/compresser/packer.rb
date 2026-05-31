@@ -2,13 +2,14 @@
 
 module Compresser
   class Packer
-    def initialize(gem_name)
+    def initialize(gem_name, specs: nil)
       @gem_name = gem_name
-      @spec = Gem::Specification.find_by_name(gem_name)
-      @load_paths = @spec.load_paths
+      @all_specs = specs
+      Gem::Specification.find_by_name(gem_name) unless @all_specs
       @processed = {}
       @file_contents = {}
       @ordered = []
+      @require_cache = {}
     end
 
     def pack
@@ -22,11 +23,18 @@ module Compresser
     private
 
     def resolve_require(path)
-      @load_paths.each do |load_path|
-        candidate = File.join(load_path, "#{path}.rb")
-        return candidate if File.exist?(candidate)
+      return @require_cache[path] if @require_cache.key?(path)
+
+      (@all_specs || Gem::Specification).each do |spec|
+        spec.full_require_paths.each do |load_path|
+          candidate = File.join(load_path, "#{path}.rb")
+          if File.exist?(candidate)
+            return (@require_cache[path] = candidate)
+          end
+        end
       end
-      nil
+
+      @require_cache[path] = nil
     end
 
     def resolve_require_relative(path, current_file)
