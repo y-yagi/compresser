@@ -1,10 +1,17 @@
 # frozen_string_literal: true
 
+require "rbconfig"
+
 module Compresser
   class Packer
     def initialize(gem_name, specs: nil)
       @gem_name = gem_name
       @all_specs = specs
+      @stdlib_paths = [
+        RbConfig::CONFIG["rubylibdir"],
+        RbConfig::CONFIG["sitelibdir"],
+        RbConfig::CONFIG["vendorlibdir"],
+      ].compact.uniq.select { |p| File.directory?(p) }
       Gem::Specification.find_by_name(gem_name) unless @all_specs
       @processed = {}
       @file_contents = {}
@@ -31,6 +38,13 @@ module Compresser
           if File.exist?(candidate)
             return (@require_cache[path] = candidate)
           end
+        end
+      end
+
+      @stdlib_paths.each do |load_path|
+        candidate = File.join(load_path, "#{path}.rb")
+        if File.exist?(candidate)
+          return (@require_cache[path] = candidate)
         end
       end
 

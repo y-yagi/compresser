@@ -51,9 +51,29 @@ class TestPackerWithFixtures < Minitest::Test
     assert_includes result, "module GemB"
   end
 
-  def test_pack_preserves_stdlib_requires
+  def test_pack_preserves_unresolvable_requires
+    # "set" is a bundled gem not present in the injected specs, so it stays as require
     result = packer("gem_b").pack
     assert_match(/^require "set"/, result)
+  end
+
+  def test_pack_inlines_stdlib_require
+    result = packer("gem_with_stdlib").pack
+    refute_match(/^require "pathname"/, result)
+    assert_includes result, "class Pathname"
+  end
+
+  def test_pack_preserves_c_extension_require
+    # io/wait has no .rb file; only a C extension, so it cannot be inlined
+    result = packer("gem_with_stdlib").pack
+    assert_match(/^require "io\/wait"/, result)
+  end
+
+  def test_pack_stdlib_appears_before_dependent
+    result = packer("gem_with_stdlib").pack
+    pathname_pos = result.index("class Pathname")
+    gem_pos = result.index("module GemWithStdlib")
+    assert pathname_pos < gem_pos, "Pathname must appear before GemWithStdlib"
   end
 
   def test_pack_strips_inlined_gem_requires
