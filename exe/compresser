@@ -1,3 +1,39 @@
 #!/usr/bin/env ruby
 
 require "compresser"
+require "optparse"
+
+options = {}
+OptionParser.new do |opts|
+  opts.banner = "Usage: compresser GEM_NAME [options]"
+  opts.on("-o", "--output FILE", "Output file (default: stdout)") do |f|
+    options[:output] = f
+  end
+  opts.on("-h", "--help", "Show this help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+gem_name = ARGV.shift
+unless gem_name
+  warn "Error: GEM_NAME is required"
+  warn "Usage: compresser GEM_NAME [-o OUTPUT_FILE]"
+  exit 1
+end
+
+begin
+  result = Compresser::Packer.new(gem_name).pack
+  if options[:output]
+    File.write(options[:output], result)
+    $stderr.puts "Written to #{options[:output]}"
+  else
+    print result
+  end
+rescue Gem::MissingSpecError => e
+  warn "Error: #{e.message}"
+  exit 1
+rescue Compresser::Error => e
+  warn "Error: #{e.message}"
+  exit 1
+end
