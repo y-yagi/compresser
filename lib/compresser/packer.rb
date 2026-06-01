@@ -122,11 +122,11 @@ module Compresser
 
     def strip_inlined_requires(content, current_file)
       content
-        .gsub(/^[ \t]*require_relative\s+['"]([^'"]+)['"]\s*\n?/) do |match|
+        .gsub(/^[ \t]*require_relative\s+['"]([^'"]+)['"][ \t]*(?:#[^\n]*)?(?:\n|\z)/) do |match|
           resolved = resolve_require_relative(Regexp.last_match(1), current_file)
           @processed.key?(resolved) ? "" : match
         end
-        .gsub(/^[ \t]*require\s+['"]([^'"]+)['"]\s*\n?/) do |match|
+        .gsub(/^[ \t]*require\s+['"]([^'"]+)['"][ \t]*(?:#[^\n]*)?(?:\n|\z)/) do |match|
           resolved = resolve_require(Regexp.last_match(1))
           @processed.key?(resolved) ? "" : match
         end
