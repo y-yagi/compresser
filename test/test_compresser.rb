@@ -52,9 +52,9 @@ class TestPackerWithFixtures < Minitest::Test
   end
 
   def test_pack_preserves_unresolvable_requires
-    # "set" is a bundled gem not present in the injected specs, so it stays as require
+    # this lib is not present in the injected specs nor the stdlib, so it stays as require
     result = packer("gem_b").pack
-    assert_match(/^require "set"/, result)
+    assert_match(/^require "external_unresolvable_lib"/, result)
   end
 
   def test_pack_inlines_stdlib_require

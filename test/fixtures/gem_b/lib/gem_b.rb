@@ -1,5 +1,5 @@
 # frozen_string_literal: true
 
-require "set"
+require "external_unresolvable_lib"
 
 module GemB; end
