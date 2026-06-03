@@ -10,18 +10,18 @@ class TestCompresser < Minitest::Test
   end
 
   def test_pack_produces_single_file
-    result = Compresser::Packer.new("compresser").pack
+    result = Compresser::Packer.new("compresser", warn: false).pack
     assert_kind_of String, result
     assert_includes result, "module Compresser"
   end
 
   def test_pack_has_frozen_string_literal
-    result = Compresser::Packer.new("compresser").pack
+    result = Compresser::Packer.new("compresser", warn: false).pack
     assert result.start_with?("# frozen_string_literal: true")
   end
 
   def test_pack_strips_internal_requires
-    result = Compresser::Packer.new("compresser").pack
+    result = Compresser::Packer.new("compresser", warn: false).pack
     refute_match(/^require_relative\s+["']compresser/, result)
     refute_match(/^require\s+["']compresser\//, result)
   end
@@ -42,7 +42,7 @@ class TestPackerWithFixtures < Minitest::Test
 
   def packer(gem_name, *dep_names)
     specs = [gem_name, *dep_names].map { |n| fixture_spec(n) }
-    Compresser::Packer.new(gem_name, specs: specs)
+    Compresser::Packer.new(gem_name, specs: specs, warn: false)
   end
 
   def test_pack_inlines_external_gem

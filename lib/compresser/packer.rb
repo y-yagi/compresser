@@ -4,9 +4,10 @@ require "rbconfig"
 
 module Compresser
   class Packer
-    def initialize(gem_name, specs: nil)
+    def initialize(gem_name, specs: nil, warn: true)
       @gem_name = gem_name
       @all_specs = specs
+      @warn = warn
       @stdlib_paths = [
         RbConfig::CONFIG["rubylibdir"],
         RbConfig::CONFIG["sitelibdir"],
@@ -17,6 +18,7 @@ module Compresser
       @file_contents = {}
       @ordered = []
       @require_cache = {}
+      @unresolved = {}
     end
 
     def pack
@@ -73,10 +75,25 @@ module Compresser
           resolve_require(path)
         end
 
-        process_file(resolved) if resolved
+        if resolved
+          process_file(resolved)
+        else
+          warn_unresolved(type, path)
+        end
       end
 
       @ordered << file_path
+    end
+
+    def warn_unresolved(type, path)
+      return unless @warn
+
+      key = "#{type}:#{path}"
+      return if @unresolved.key?(key)
+      @unresolved[key] = true
+
+      directive = type == :require_relative ? "require_relative" : "require"
+      $stderr.puts "compresser: could not resolve #{directive} #{path.inspect}; leaving it as-is"
     end
 
     def extract_requires(content)
