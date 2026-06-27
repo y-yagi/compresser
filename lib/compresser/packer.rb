@@ -120,6 +120,7 @@ module Compresser
         content = @file_contents[file_path]
         content = strip_magic_comments(content)
         content = strip_inlined_requires(content, file_path)
+        content = resolve_static_send_calls(content)
         content = content.strip
         next if content.empty?
 
@@ -135,6 +136,18 @@ module Compresser
         .gsub(/^# frozen_string_literal: (?:true|false)\n/, "")
         .gsub(/^# encoding: .*\n/, "")
         .gsub(/^# coding: .*\n/, "")
+    end
+
+    def resolve_static_send_calls(content)
+      content.gsub(/\.(public_send|__send__|send)\(:([a-zA-Z_]\w*[?!]?)((?:\s*,\s*(?:[^)(]|\([^)]*\))*)?)\)/) do
+        method_name = Regexp.last_match(2)
+        args_part = Regexp.last_match(3).strip
+        if args_part.empty?
+          ".#{method_name}"
+        else
+          ".#{method_name}(#{args_part.sub(/\A,\s*/, "")})"
+        end
+      end
     end
 
     def strip_inlined_requires(content, current_file)

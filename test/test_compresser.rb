@@ -112,4 +112,14 @@ class TestPackerWithFixtures < Minitest::Test
     assert_equal 1, result.scan("module GemCircular\n  module A").length
     assert_equal 1, result.scan("module GemCircular\n  module B").length
   end
+
+  def test_resolve_static_send_calls
+    result = packer("gem_with_send").pack
+    assert_includes result, "parser.convert_to_uri(oth)"
+    assert_includes result, "parser.to_s"
+    assert_includes result, "obj.process(oth)"
+    assert_includes result, "obj.validate(oth)"
+    assert_includes result, "obj.__send__(method_name)"
+    assert_includes result, 'obj.__send__("#{c}=", 1)'
+  end
 end
