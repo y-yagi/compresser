@@ -113,13 +113,46 @@ class TestPackerWithFixtures < Minitest::Test
     assert_equal 1, result.scan("module GemCircular\n  module B").length
   end
 
+  def test_warn_reports_unresolved_requires
+    _, err = capture_io do
+      Compresser::Packer.new("gem_b", specs: [fixture_spec("gem_b")]).pack
+    end
+    assert_match(/could not resolve require "external_unresolvable_lib"/, err)
+  end
+
+  def test_warn_false_suppresses_output
+    _, err = capture_io { packer("gem_b").pack }
+    assert_empty err
+  end
+
+  def test_warn_deduplicates_same_require
+    # gem_a.rb and gem_a/core.rb could both be unresolvable; warn only once per path
+    _, err = capture_io do
+      Compresser::Packer.new("gem_a", specs: [fixture_spec("gem_a")]).pack
+    end
+    assert_equal 1, err.scan('"gem_b"').length
+  end
+
   def test_resolve_static_send_calls
     result = packer("gem_with_send").pack
+    # Static symbol dispatch → direct call
     assert_includes result, "parser.convert_to_uri(oth)"
     assert_includes result, "parser.to_s"
     assert_includes result, "obj.process(oth)"
     assert_includes result, "obj.validate(oth)"
-    assert_includes result, "obj.__send__(method_name)"
+    # String-interpolation dynamic send cannot be resolved and remains unchanged
     assert_includes result, 'obj.__send__("#{c}=", 1)'
+  end
+
+  def test_expand_dynamic_send_calls
+    result = packer("gem_with_send").pack
+    # Dynamic dispatch over symbol array → case/when
+    assert_includes result, "when :name then self.name"
+    assert_includes result, "when :value then self.value"
+    # Compound setter+getter → single case/when
+    assert_includes result, "when :name then self.name = oth.name"
+    assert_includes result, "when :value then self.value = oth.value"
+    # No remaining __send__ with plain variable argument
+    refute_match(/\.(public_send|__send__)\([a-zA-Z_]\w*\)/, result)
   end
 end

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "rbconfig"
+require "set"
 
 module Compresser
   class Packer
@@ -112,6 +113,7 @@ module Compresser
 
     def generate_output
       has_frozen = @file_contents.values.any? { |c| c.include?("# frozen_string_literal: true") }
+      dispatch_symbols = collect_component_symbols
 
       parts = []
       parts << "# frozen_string_literal: true\n\n" if has_frozen
@@ -121,6 +123,7 @@ module Compresser
         content = strip_magic_comments(content)
         content = strip_inlined_requires(content, file_path)
         content = resolve_static_send_calls(content)
+        content = expand_dynamic_send_calls(content, dispatch_symbols)
         content = content.strip
         next if content.empty?
 
@@ -136,6 +139,50 @@ module Compresser
         .gsub(/^# frozen_string_literal: (?:true|false)\n/, "")
         .gsub(/^# encoding: .*\n/, "")
         .gsub(/^# coding: .*\n/, "")
+    end
+
+    def collect_component_symbols
+      array_syms = Set.new
+      method_syms = Set.new
+
+      @file_contents.each_value do |content|
+        content.scan(/\[(?:\s*:[a-zA-Z_]\w*[?!]?\s*,?\s*)+\]/) do |arr|
+          arr.scan(/:([a-zA-Z_]\w*[?!]?)/) { |m| array_syms << m[0].to_sym }
+        end
+
+        content.scan(/^\s*def (?:self\.)?([a-zA-Z_]\w*[?!=]?)(?:[ \t]*[(\n;]|$)/) do |m|
+          method_syms << m[0].chomp("=").to_sym
+        end
+      end
+
+      (array_syms & method_syms).reject { |s| s.to_s.end_with?("=") }.sort
+    end
+
+    def expand_dynamic_send_calls(content, symbols)
+      return content if symbols.empty?
+
+      # Compound: recv1.__send__("#{v}=", recv2.__send__(v)) — expand both in one case
+      content = content.gsub(
+        /([a-zA-Z_]\w*|self)\.(public_send|__send__)\("#\{([a-zA-Z_]\w*)\}=",\s*([a-zA-Z_]\w*)\.(public_send|__send__)\(\3\)\)/
+      ) do
+        r1  = Regexp.last_match(1)
+        var = Regexp.last_match(3)
+        r2  = Regexp.last_match(4)
+        arms = symbols.map { |m| "when #{m.inspect} then #{r1}.#{m} = #{r2}.#{m}" }
+        "(case #{var}; #{arms.join("; ")}; else raise ArgumentError, \"unknown component: \#{#{var}}\"; end)"
+      end
+
+      # Simple getter: recv.__send__(var) or recv.public_send(var)
+      content = content.gsub(
+        /([a-zA-Z_]\w*|self)\.(public_send|__send__)\(([a-zA-Z_]\w*)\)/
+      ) do
+        receiver = Regexp.last_match(1)
+        var      = Regexp.last_match(3)
+        arms = symbols.map { |m| "when #{m.inspect} then #{receiver}.#{m}" }
+        "(case #{var}; #{arms.join("; ")}; else raise ArgumentError, \"unknown component: \#{#{var}}\"; end)"
+      end
+
+      content
     end
 
     def resolve_static_send_calls(content)
